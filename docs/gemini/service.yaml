@@ -11,13 +11,16 @@ services:
       - drone_server_certs:/certs
     restart: always
     environment:
-      DRONE_SERVER_HOST: drone.example.com # Replace with your Drone server's hostname
-      DRONE_SERVER_PROTO: https          # Use https in production
-      DRONE_TLS_CERT: /certs/drone.crt   # Path to your TLS certificate
-      DRONE_TLS_KEY: /certs/drone.key    # Path to your TLS key
-      DRONE_GITHUB_CLIENT_ID: YOUR_GITHUB_CLIENT_ID      # Replace with your GitHub OAuth client ID
-      DRONE_GITHUB_CLIENT_SECRET: YOUR_GITHUB_CLIENT_SECRET  # Replace with your GitHub OAuth client secret
-      DRONE_ADMIN: your_github_username                  # Replace with your GitHub username for admin access
+      DRONE_SERVER_HOST: drone.example.com
+      DRONE_SERVER_PROTO: https
+      DRONE_TLS_CERT: /certs/drone.crt
+      DRONE_TLS_KEY: /certs/drone.key
+      DRONE_GITHUB_CLIENT_ID_FILE: /run/secrets/github_client_id
+      DRONE_GITHUB_CLIENT_SECRET_FILE: /run/secrets/github_client_secret
+      DRONE_ADMIN: your_github_username
+    secrets:
+      - github_client_id
+      - github_client_secret
     deploy:
       mode: replicated
       replicas: 1
@@ -25,23 +28,8 @@ services:
         constraints:
           - node.role == manager
 
-  drone-runner:
-    image: drone/drone-runner-docker:1
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    restart: always
-    environment:
-      DRONE_RPC_PROTO: https          # Should match DRONE_SERVER_PROTO
-      DRONE_RPC_HOST: drone.example.com # Should match DRONE_SERVER_HOST
-      DRONE_RPC_SECRET: YOUR_RPC_SECRET  # Generate a secure random string
-      DRONE_RUNNER_CAPACITY: 2        # Number of concurrent pipelines this runner can handle
-    deploy:
-      mode: replicated
-      replicas: 2 # You can scale the number of runners
-      placement:
-        constraints:
-          - node.role == worker
-
-volumes:
-  drone_server_data:
-  drone_server_certs:
+secrets:
+  github_client_id:
+    external: true
+  github_client_secret:
+    external: true
