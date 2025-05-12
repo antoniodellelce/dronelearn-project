@@ -1,0 +1,12 @@
+#
+# Created:      120525
+#
+# vim:syntax=sh
+#
+
+## MAIN ##
+
+  export LEARNDRONE="$PWD"
+  [ -d "$VIRTUAL_ENV" ] && deactivate
+
+## EOF ##
