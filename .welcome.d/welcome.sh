@@ -5,7 +5,10 @@
 
 ## MAIN ##
 
-  echo "Please add a welcome: Learning Drone-CI: Install & Use."
+cat << EOF
+  Please add a welcome: Learning Drone-CI: Install & Use.
+
+EOF
   lastwelcome
 
 ## EOF ##
