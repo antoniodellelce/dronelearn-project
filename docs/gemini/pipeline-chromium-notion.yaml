@@ -1,0 +1,254 @@
+kind: pipeline
+type: docker # Or kubernetes, exec, etc. depending on your Drone runner
+name: update-chromium-version-in-notion
+
+# Define when this pipeline should run
+trigger:
+  branch:
+    - main # Example: Run on pushes to the main branch
+  # Or run on a schedule (e.g., daily at midnight UTC)
+  # event:
+  #  - cron
+  # cron:
+  #  - "nightly" # Drone has predefined cron job names like @daily, @weekly, or you can use cron syntax
+
+# Define secrets that will be injected as environment variables
+# These must be configured in your Drone repository's settings
+secrets:
+  - name: notion_api_token
+    # In Drone UI: your Notion Integration Token
+  - name: notion_page_id
+    # In Drone UI: the ID of the Notion page to update
+  - name: notion_property_name
+    # In Drone UI: the exact name of the Notion Page Property to update (e.g., "Latest Chromium Version")
+
+# Shared volume for passing data between steps if needed, though for stdout capture it's direct.
+# workspace:
+#   path: /drone/src # Default workspace path
+
+steps:
+  - name: fetch-chromium-version
+    image: secret/get-chromium-version # Your custom container
+    pull: always # Or if_not_exists, etc.
+    # This step will execute your container. Its stdout will be captured.
+    # We need a way to pass this output to the next step.
+    # A simple way is to write it to a file in the shared workspace.
+    commands:
+      # This command assumes your container's default entrypoint/cmd outputs the version.
+      # It redirects the output to a file in the workspace.
+      - /app/run-script > /drone/src/chromium_version.txt # Adjust if your container has a specific script/command
+      # If your container's CMD or ENTRYPOINT directly outputs the version, you might not need a command here,
+      # but rather, ensure the next step can read it.
+      # For clarity and control, explicitly writing to a file is good.
+      # If your container 'secret/get-chromium-version' just prints the version when run,
+      # the command line would be:
+      # "your-container-command-that-prints-version > /drone/src/chromium_version.txt"
+      # If 'secret/get-chromium-version' itself IS the command, then you'd need to know how to invoke it.
+      # Let's assume your container's entrypoint directly prints the version:
+      # The 'commands' in Drone override the Docker CMD. If your container's ENTRYPOINT
+      # is what prints the version, this might be tricky.
+      # A more robust way:
+      # If your container's ENTRYPOINT is a script that prints the version:
+      # (No command needed here if the entrypoint does the job and outputs to stdout)
+      # We'll handle capturing this output in the next step if direct stdout passing isn't trivial.
+
+      # Let's simplify: Assume your container 'secret/get-chromium-version' when run,
+      # prints the version to stdout. The `commands` here will run *inside* that container.
+      # So if your container has a specific script to call:
+      # - /path/to/get_version_script.sh > /drone/src/chromium_version.txt
+      # If the container itself, when run (`docker run secret/get-chromium-version`), prints the version:
+      # We'll capture this in a script in the next step or use an intermediate file.
+      # The most straightforward is if your container saves the version to a file that can be shared via a volume.
+      # Given the initial prompt, let's assume we run the container and its output is the version.
+
+  # Revised step to capture version:
+  - name: capture-version-output
+    image: secret/get-chromium-version # Your container
+    pull: always
+    # The command executed by your container's entrypoint should print the version.
+    # We redirect this output to a file in the shared workspace.
+    # This assumes the container's default execution path prints the version.
+    # If `secret/get-chromium-version` needs arguments, add them here.
+    # The key is `> /drone/src/chromium_version.txt`.
+    # The command to run inside the container to get the version.
+    # If just running the container prints the version:
+    # This is tricky as `commands` *replaces* the container's CMD.
+    # Let's use a shell to run the container's entrypoint explicitly if known or rely on default behavior.
+    # The simplest: your container `secret/get-chromium-version` should have an `ENTRYPOINT`
+    # or `CMD` that prints the version to stdout.
+    # Drone will capture this. However, passing stdout directly as a string between steps can be complex.
+    # Writing to a file in the shared `/drone/src` is the most reliable.
+    # So, the container `secret/get-chromium-version` should itself perhaps write to a predefined file path
+    # or the `commands` here should ensure its stdout is captured.
+
+    # Let's assume your container `secret/get-chromium-version` needs to be run,
+    # and its output is the version. We'll use a temporary script.
+    # This is getting a bit convoluted. The simplest is if your container can be made to write to a file.
+    # Alternative: Use a plugin or a more complex script if direct stdout passing is hard.
+
+    # Simplest approach: Your container's command prints the version.
+    # This will run *inside* secret/get-chromium-version
+    commands:
+      # If your container has an executable script, e.g., /usr/local/bin/get_version:
+      # - /usr/local/bin/get_version > /drone/src/chromium_version.txt
+      # If the container's default action prints the version:
+      # We need to invoke that default action. This depends on your Dockerfile (ENTRYPOINT/CMD).
+      # Let's assume your container's default CMD is what prints the version.
+      # Drone's `commands` will override CMD.
+      # A common pattern: use a small helper image or ensure your image can take a command.
+
+      # Let's try to get the output of the container directly.
+      # This assumes when `secret/get-chromium-version` runs, its stdout is the version.
+      # We will use a simple shell command within a basic image to run your container
+      # and capture its output if direct output capture from the `image` directive is not straightforward for piping.
+      # No, this is overcomplicating. Drone's model is one container per step.
+
+      # Cleanest: Your `secret/get-chromium-version` container, when run, prints the version to STDOUT.
+      # We will then use a subsequent step to read this.
+      # Drone doesn't have a built-in "get stdout from previous step" mechanism directly as a variable.
+      # So, the `secret/get-chromium-version` step should save its output to the workspace.
+    volumes: # Ensure the workspace is available if not default
+      - name: shared_workspace
+        path: /drone/src
+    commands:
+      # This command runs *inside* `secret/get-chromium-version`.
+      # It assumes the container itself has a script or command that outputs the version.
+      # Replace `your_command_to_get_version` with the actual command.
+      # If the container's `ENTRYPOINT` or `CMD` is what prints the version,
+      # you might need to call it explicitly if `commands` overrides it.
+      # If just running the container `docker run secret/get-chromium-version` prints the version,
+      # you need to ensure this step's execution does that and redirects.
+      # This is the most direct if your container's default behavior is to print the version:
+      - sh -c "exec /entrypoint.sh > /drone/src/chromium_version.txt" # Replace /entrypoint.sh with your container's actual entrypoint or command if known
+      # If your container just prints the version (e.g., `CMD ["my_script"]`),
+      # and `my_script` prints the version, then this step needs to ensure that happens.
+      # Drone's `commands` usually override the `CMD`.
+      # One simple way: your container's entrypoint is a script that prints the version.
+      # Then, this step will execute that. We need to ensure stdout goes to the file.
+      # This is often tricky. A better way for your container:
+      # `secret/get-chromium-version` is built to write the version to `/output/version.txt`
+      # Then you can mount `/drone/src` to `/output`.
+      # `docker run -v /some/host/path:/output secret/get-chromium-version`
+      # In Drone, this would be managed with workspace.
+
+      # Simplest assumption: Your container `secret/get-chromium-version`
+      # has an entrypoint script that prints the version.
+      # The following command line assumes the entrypoint of `secret/get-chromium-version` prints the version.
+      # The output is redirected to a file in the workspace.
+      # (No explicit command needed if the default action of the image is to print and exit,
+      # and we capture its output. But Drone doesn't pipe stdout between steps directly.)
+
+      # **Correction for clarity and reliability:**
+      # The `secret/get-chromium-version` container itself should be designed
+      # to write its output to a file in a directory that will be part of the Drone workspace.
+      # Or, if it prints to STDOUT, the `commands` here will run *inside* that container.
+      # Let's assume `get_version.sh` is a script *inside* `secret/get-chromium-version`.
+      - /usr/local/bin/get_chromium_version_script > /drone/src/chromium_version.txt # Replace with the actual script/command in your container
+
+  - name: update-notion
+    image: python:3.9-slim # A lightweight Python image
+    pull: always
+    environment:
+      # Secrets are automatically available as environment variables
+      NOTION_API_TOKEN:
+        from_secret: notion_api_token
+      NOTION_PAGE_ID:
+        from_secret: notion_page_id
+      NOTION_PROPERTY_NAME:
+        from_secret: notion_property_name
+    volumes: # Make sure it can access the workspace
+      - name: shared_workspace
+        path: /drone/src
+    commands:
+      - pip install requests --retries 3 --timeout 30 # Install dependencies
+      - |
+        CHROME_VERSION=$(cat /drone/src/chromium_version.txt | tr -d '\n' | tr -d '\r') # Read version, remove newlines
+        if [ -z "$CHROME_VERSION" ]; then
+          echo "Error: chromium_version.txt is empty or not found."
+          exit 1
+        fi
+        echo "Fetched Chromium Version: $CHROME_VERSION"
+        echo "Notion Page ID: $NOTION_PAGE_ID"
+        echo "Notion Property Name: $NOTION_PROPERTY_NAME"
+
+        # Create the Python script to update Notion
+        cat <<EOF > update_notion_script.py
+        import os
+        import requests
+        import json
+
+        NOTION_TOKEN = os.environ.get("NOTION_API_TOKEN")
+        PAGE_ID = os.environ.get("NOTION_PAGE_ID")
+        # The name of the property in Notion to update (e.g., "Latest Version")
+        PROPERTY_NAME = os.environ.get("NOTION_PROPERTY_NAME")
+        CHROMIUM_VERSION = os.environ.get("CHROME_VERSION")
+
+        if not all([NOTION_TOKEN, PAGE_ID, PROPERTY_NAME, CHROMIUM_VERSION]):
+            print("Error: Missing one or more environment variables: NOTION_TOKEN, PAGE_ID, PROPERTY_NAME, CHROME_VERSION")
+            exit(1)
+
+        headers = {
+            "Authorization": f"Bearer {NOTION_TOKEN}",
+            "Content-Type": "application/json",
+            "Notion-Version": "2022-06-28",  # Use a current API version
+        }
+
+        # This payload assumes you are updating a "rich_text" property type.
+        # If your property is a "title", "number", etc., adjust the payload accordingly.
+        # Refer to: https://developers.notion.com/reference/page-property-values
+        update_payload = {
+            "properties": {
+                PROPERTY_NAME: { # This must be the exact name of your property
+                    "rich_text": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": CHROMIUM_VERSION
+                            }
+                        }
+                    ]
+                }
+                # If you're updating the page title (usually a property named 'title' for database pages, or inferred for simple pages)
+                # Example for a database page's title property (often named "Name" or "title"):
+                # "Name": {
+                #     "title": [
+                #         {
+                #             "type": "text",
+                #             "text": {
+                #                 "content": f"Chromium v{CHROMIUM_VERSION}"
+                #             }
+                #         }
+                #     ]
+                # }
+            }
+        }
+
+        # Check if the page is a database page or a simple page for the correct title property key
+        # For simplicity, this example targets a custom rich_text property.
+        # Ensure PROPERTY_NAME corresponds to a "Text" or "Rich Text" property on your Notion page.
+
+        api_url = f"https://api.notion.com/v1/pages/{PAGE_ID}"
+
+        try:
+            print(f"Sending PATCH request to {api_url}")
+            print(f"Payload: {json.dumps(update_payload)}")
+            response = requests.patch(api_url, headers=headers, json=update_payload)
+            response.raise_for_status()  # Raises an HTTPError for bad responses (4XX or 5XX)
+            print("Notion page updated successfully!")
+            print(response.json())
+        except requests.exceptions.RequestException as e:
+            print(f"Error updating Notion page: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response content: {e.response.text}")
+            exit(1)
+
+        EOF
+        # Make CHROME_VERSION available to the python script
+        export CHROME_VERSION="$CHROME_VERSION"
+        python update_notion_script.py
+
+# Define the volume if you didn't use the global workspace (often implicit for docker type)
+volumes:
+  - name: shared_workspace
+    temp: {} # Creates an empty dir volume, lifecycle is per-pipeline
